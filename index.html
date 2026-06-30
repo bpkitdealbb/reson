@@ -14,6 +14,9 @@
         .tab-content.active { display: block; }
         .custom-scroll::-webkit-scrollbar { width: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        /* ড্রয়ার অ্যানিমেশন */
+        .drawer-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
+        .drawer-content.open { max-height: 1000px; transition: max-height 0.5s ease-in; }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen pb-20">
@@ -55,7 +58,6 @@
         </div>
 
         <div id="tab-dashboard" class="tab-content active space-y-4">
-            
             <div id="budgetInitForm" class="bg-white p-4 rounded-xl shadow-sm hidden">
                 <h3 class="font-bold text-gray-800 mb-2 text-sm">নতুন বাজেট সেট করুন</h3>
                 <div class="flex gap-2">
@@ -70,8 +72,7 @@
                     <input type="date" id="expenseEntryDate" class="p-1 border border-gray-300 rounded text-xs font-semibold text-gray-700 outline-none">
                 </div>
                 
-                <div id="bulkItemList" class="max-h-72 overflow-y-auto custom-scroll pr-2 divide-y divide-gray-100">
-                    </div>
+                <div id="bulkItemList" class="max-h-72 overflow-y-auto custom-scroll pr-2 divide-y divide-gray-100"></div>
 
                 <div class="mt-4 pt-3 border-t-2 border-dashed border-gray-200">
                     <div class="flex justify-between items-center mb-3">
@@ -89,7 +90,6 @@
                             <input type="number" id="bulkExtraPaid" value="0" class="w-full p-2 border rounded-lg bg-gray-50 outline-none text-sm font-bold text-red-500">
                         </div>
                     </div>
-                    
                     <button onclick="submitBulkExpense()" class="w-full bg-indigo-600 text-white p-3 rounded-lg font-bold shadow-md hover:bg-indigo-700 transition">সব একসাথে সেভ করুন</button>
                 </div>
             </div>
@@ -103,6 +103,7 @@
                 </div>
                 <button onclick="loadReports()" class="bg-indigo-600 text-white p-2 px-4 rounded-lg text-sm font-semibold"><i class="fa-solid fa-search"></i></button>
             </div>
+            
             <div class="bg-white p-4 rounded-xl shadow-sm flex justify-between items-center border-l-4 border-purple-500">
                 <div>
                     <p class="text-xs text-gray-500 font-semibold">এই মাসের মোট খরচ</p>
@@ -110,13 +111,10 @@
                 </div>
                 <i class="fa-solid fa-wallet text-2xl text-purple-300"></i>
             </div>
-            <div class="bg-white p-4 rounded-xl shadow-sm space-y-2">
-                <h4 class="font-bold text-sm text-gray-700 border-b pb-1"><i class="fa-solid fa-pie-chart text-indigo-500 mr-1"></i> পণ্যভিত্তিক খরচ</h4>
-                <div id="productSummaryList" class="divide-y text-sm text-gray-600"></div>
-            </div>
+            
             <div class="bg-white p-4 rounded-xl shadow-sm space-y-2">
                 <h4 class="font-bold text-sm text-gray-700 border-b pb-1"><i class="fa-solid fa-clock text-orange-500 mr-1"></i> দৈনিক খরচ হিস্ট্রি</h4>
-                <div id="dailyHistoryList" class="space-y-2 overflow-y-auto max-h-64 pr-1"></div>
+                <div id="dailyHistoryList" class="space-y-3 mt-2"></div>
             </div>
         </div>
 
@@ -152,7 +150,6 @@
 
         window.addEventListener('load', () => {
             const now = new Date();
-            // মাসের রিপোর্ট এবং আজকের তারিখ অটোমেটিক সেট করা
             document.getElementById('reportMonth').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
             document.getElementById('expenseEntryDate').value = now.toISOString().split('T')[0];
             
@@ -241,31 +238,22 @@
                 let qty = Number(input.value) || 0;
                 let price = Number(input.getAttribute('data-price'));
                 let rowTotal = qty * price;
-                
                 input.parentElement.nextElementSibling.querySelector('.row-total').innerText = rowTotal > 0 ? rowTotal.toFixed(2) : '0';
                 grandTotal += rowTotal;
             });
-            
             document.getElementById('bulkTotalCalc').innerText = grandTotal.toFixed(2);
             document.getElementById('bulkActualPaid').value = grandTotal > 0 ? grandTotal.toFixed(2) : '';
         }
 
         async function submitBulkExpense() {
             if (!globalBudgetState.hasEntries) return alert("আগে বাজেট সেট করুন।");
-            
             const entryDate = document.getElementById('expenseEntryDate').value;
             if(!entryDate) return alert("দয়া করে একটি তারিখ নির্বাচন করুন।");
             
             let selectedItems = [];
             document.querySelectorAll('.kg-input').forEach(input => {
                 let qty = Number(input.value);
-                if (qty > 0) {
-                    selectedItems.push({
-                        name: input.getAttribute('data-name'),
-                        qty: qty,
-                        price: Number(input.getAttribute('data-price'))
-                    });
-                }
+                if (qty > 0) selectedItems.push({ name: input.getAttribute('data-name'), qty: qty, price: Number(input.getAttribute('data-price')) });
             });
             
             if(selectedItems.length === 0) return alert("অন্তত একটি আইটেমের পরিমাণ (কেজি) দিন।");
@@ -279,27 +267,15 @@
             selectedItems.forEach((item, index) => {
                 let calc = item.qty * item.price;
                 let isLast = (index === selectedItems.length - 1);
-                
                 let rowActual = isLast ? (totalActualPaid - distributedActual) : calc;
                 let rowExtra = isLast ? totalExtraPaid : 0;
-                
                 if(!isLast) distributedActual += calc;
 
-                payloadItems.push({
-                    item: item.name,
-                    quantity: item.qty,
-                    calculatedPrice: calc,
-                    actualPaid: rowActual,
-                    extraPaid: rowExtra
-                });
+                payloadItems.push({ item: item.name, quantity: item.qty, calculatedPrice: calc, actualPaid: rowActual, extraPaid: rowExtra });
             });
 
             toggleLoader(true);
-            const res = await callApi('add_bulk_expense', {
-                startingBudget: globalBudgetState.startingBudget,
-                entryDate: entryDate, // নতুন: ফ্রন্টএন্ড থেকে তারিখ পাঠানো হচ্ছে
-                items: payloadItems
-            });
+            const res = await callApi('add_bulk_expense', { startingBudget: globalBudgetState.startingBudget, entryDate: entryDate, items: payloadItems });
             toggleLoader(false);
 
             if(res) {
@@ -332,16 +308,110 @@
             if(res) { alert(res.message); refreshDashboard(); }
         }
 
+        // ড্রয়ার খোলা বা বন্ধ করার ফাংশন
+        window.toggleDrawer = function(index) {
+            const content = document.getElementById(`drawer-content-${index}`);
+            const icon = document.getElementById(`drawer-icon-${index}`);
+            if(content.classList.contains('open')) {
+                content.classList.remove('open');
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                content.classList.add('open');
+                icon.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        // নতুন: ড্রয়ার সিস্টেম সহ রিপোর্ট লোড করা
         async function loadReports() {
             const month = document.getElementById('reportMonth').value;
             if(!month) return;
             toggleLoader(true);
             const res = await callApi('get_reports', { month });
             toggleLoader(false);
+            
             if(res) {
                 document.getElementById('reportTotalMonthly').innerText = res.totalMonthlyExpense.toFixed(2);
-                document.getElementById('productSummaryList').innerHTML = Object.entries(res.productWiseSummary).map(([k,v]) => `<div class="flex justify-between py-2"><span class="font-medium">${k} <span class="text-xs text-gray-400">(${v.quantity}কেজি)</span></span><span class="font-bold">৳${v.totalCost.toFixed(2)}</span></div>`).join('');
-                document.getElementById('dailyHistoryList').innerHTML = res.dailyHistory.map(r => `<div class="bg-gray-50 p-2.5 rounded-lg text-xs border border-gray-100 mb-2"><div class="flex justify-between font-bold mb-1"><span>${r.date} - ${r.item}</span><span class="text-indigo-600">৳${r.totalPaid}</span></div><div class="flex justify-between text-gray-400"><span>কেজি: ${r.quantity}</span><span>অবশিষ্ট: ৳${r.remainingBalance}</span></div></div>`).join('');
+                
+                // তারিখ অনুযায়ী ডেটা গ্রুপ করা হচ্ছে
+                const groupedByDate = {};
+                res.dailyHistory.forEach(record => {
+                    if(!groupedByDate[record.date]) groupedByDate[record.date] = [];
+                    groupedByDate[record.date].push(record);
+                });
+
+                let drawersHtml = '';
+                let drawerIndex = 0;
+
+                // প্রতিটি তারিখের জন্য একটি করে ড্রয়ার তৈরি
+                for (const [date, records] of Object.entries(groupedByDate)) {
+                    drawerIndex++;
+                    const dayTotal = records.reduce((sum, r) => sum + r.totalPaid, 0);
+                    
+                    // ওই দিনের কেনা আইটেমগুলো ম্যাপ করে রাখা
+                    const boughtItems = {};
+                    records.forEach(r => {
+                        if(!boughtItems[r.item]) boughtItems[r.item] = { qty: 0, total: 0 };
+                        boughtItems[r.item].qty += r.quantity;
+                        boughtItems[r.item].total += r.totalPaid;
+                    });
+
+                    // টেবিলের রো তৈরি (অ্যাডমিন প্যানেলের সবগুলো আইটেম চেক করবে)
+                    let tableRowsHtml = '';
+                    let serialNo = 1;
+                    
+                    globalInventory.forEach(invItem => {
+                        const bought = boughtItems[invItem.itemName];
+                        const qty = bought ? bought.qty : 0;
+                        const total = bought ? bought.total : 0;
+                        
+                        tableRowsHtml += `
+                            <tr class="border-b border-gray-200 last:border-0 hover:bg-gray-50">
+                                <td class="p-2 text-center text-xs text-gray-500 font-medium border-r border-gray-200">${serialNo++}</td>
+                                <td class="p-2 text-sm font-semibold text-gray-700 border-r border-gray-200">${invItem.itemName}</td>
+                                <td class="p-2 text-center text-sm font-bold ${qty > 0 ? 'text-indigo-600' : 'text-gray-400'} border-r border-gray-200">${qty}</td>
+                                <td class="p-2 text-right text-sm font-bold text-gray-700">৳${total.toFixed(2)}</td>
+                            </tr>
+                        `;
+                    });
+
+                    // ড্রয়ারের মূল ডিজাইন
+                    drawersHtml += `
+                        <div class="border border-indigo-100 bg-white rounded-xl shadow-sm overflow-hidden">
+                            <button onclick="toggleDrawer(${drawerIndex})" class="w-full flex justify-between items-center p-3.5 bg-indigo-50/50 hover:bg-indigo-100 transition focus:outline-none">
+                                <div class="flex items-center gap-2">
+                                    <i class="fa-regular fa-calendar-check text-indigo-600 text-lg"></i>
+                                    <span class="font-bold text-gray-800 tracking-wide">${date}</span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="font-black text-indigo-700 text-base">৳${dayTotal.toFixed(2)}</span>
+                                    <i id="drawer-icon-${drawerIndex}" class="fa-solid fa-chevron-down text-gray-400 transition-transform duration-300"></i>
+                                </div>
+                            </button>
+                            
+                            <div id="drawer-content-${drawerIndex}" class="drawer-content bg-white">
+                                <div class="p-2">
+                                    <div class="border border-gray-200 rounded-lg overflow-hidden">
+                                        <table class="w-full text-left">
+                                            <thead class="bg-gray-100 border-b border-gray-200 text-xs text-gray-600 uppercase">
+                                                <tr>
+                                                    <th class="p-2 text-center w-10 border-r border-gray-200">ক্র.নং</th>
+                                                    <th class="p-2 border-r border-gray-200">আইটেম</th>
+                                                    <th class="p-2 text-center border-r border-gray-200">কেজি</th>
+                                                    <th class="p-2 text-right">মোট (৳)</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${tableRowsHtml}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                document.getElementById('dailyHistoryList').innerHTML = drawersHtml || '<div class="text-center text-gray-400 py-6 font-medium border-2 border-dashed border-gray-200 rounded-xl">এই মাসে কোনো হিসাব নেই</div>';
             }
         }
 
