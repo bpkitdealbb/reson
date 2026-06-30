@@ -12,11 +12,13 @@
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .tab-content { display: none; }
         .tab-content.active { display: block; }
-        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar { height: 6px; width: 4px; }
         .custom-scroll::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        /* ড্রয়ার অ্যানিমেশন */
         .drawer-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
-        .drawer-content.open { max-height: 1000px; transition: max-height 0.5s ease-in; }
+        .drawer-content.open { max-height: 2000px; transition: max-height 0.5s ease-in; }
+        /* টেবিলের জন্য বিশেষ স্টাইল */
+        .table-container { max-height: 400px; overflow: auto; }
+        .sticky-header th { position: sticky; top: 0; z-index: 10; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body class="bg-gray-100 min-h-screen pb-20">
@@ -308,7 +310,6 @@
             if(res) { alert(res.message); refreshDashboard(); }
         }
 
-        // ড্রয়ার খোলা বা বন্ধ করার ফাংশন
         window.toggleDrawer = function(index) {
             const content = document.getElementById(`drawer-content-${index}`);
             const icon = document.getElementById(`drawer-icon-${index}`);
@@ -321,7 +322,7 @@
             }
         }
 
-        // নতুন: ড্রয়ার সিস্টেম সহ রিপোর্ট লোড করা
+        // আপনার আঁকা ছবির মত টেবিল তৈরির লজিক
         async function loadReports() {
             const month = document.getElementById('reportMonth').value;
             if(!month) return;
@@ -332,51 +333,70 @@
             if(res) {
                 document.getElementById('reportTotalMonthly').innerText = res.totalMonthlyExpense.toFixed(2);
                 
-                // তারিখ অনুযায়ী ডেটা গ্রুপ করা হচ্ছে
+                // ১. প্রথমে তারিখ অনুযায়ী গ্রুপ করা
                 const groupedByDate = {};
                 res.dailyHistory.forEach(record => {
-                    if(!groupedByDate[record.date]) groupedByDate[record.date] = [];
-                    groupedByDate[record.date].push(record);
+                    if(!groupedByDate[record.date]) groupedByDate[record.date] = {};
+                    // ২. এরপর প্রতিটি কেনাকাটার (Transaction) আইডি অনুযায়ী গ্রুপ করা
+                    if(!groupedByDate[record.date][record.txId]) groupedByDate[record.date][record.txId] = [];
+                    groupedByDate[record.date][record.txId].push(record);
                 });
 
                 let drawersHtml = '';
                 let drawerIndex = 0;
 
-                // প্রতিটি তারিখের জন্য একটি করে ড্রয়ার তৈরি
-                for (const [date, records] of Object.entries(groupedByDate)) {
+                for (const [date, transactions] of Object.entries(groupedByDate)) {
                     drawerIndex++;
-                    const dayTotal = records.reduce((sum, r) => sum + r.totalPaid, 0);
                     
-                    // ওই দিনের কেনা আইটেমগুলো ম্যাপ করে রাখা
-                    const boughtItems = {};
-                    records.forEach(r => {
-                        if(!boughtItems[r.item]) boughtItems[r.item] = { qty: 0, total: 0 };
-                        boughtItems[r.item].qty += r.quantity;
-                        boughtItems[r.item].total += r.totalPaid;
-                    });
-
-                    // টেবিলের রো তৈরি (অ্যাডমিন প্যানেলের সবগুলো আইটেম চেক করবে)
+                    let dayTotal = 0;
                     let tableRowsHtml = '';
                     let serialNo = 1;
-                    
+
+                    // ৩. টেবিলের হেডার তৈরি (আপনার আঁকা ছবির মতো কলাম)
+                    let tableHeadHtml = `<th class="p-2 border-r border-gray-400 min-w-[50px] whitespace-nowrap bg-indigo-100 font-bold">ক্রমিক<br>নং</th>`;
                     globalInventory.forEach(invItem => {
-                        const bought = boughtItems[invItem.itemName];
-                        const qty = bought ? bought.qty : 0;
-                        const total = bought ? bought.total : 0;
-                        
-                        tableRowsHtml += `
-                            <tr class="border-b border-gray-200 last:border-0 hover:bg-gray-50">
-                                <td class="p-2 text-center text-xs text-gray-500 font-medium border-r border-gray-200">${serialNo++}</td>
-                                <td class="p-2 text-sm font-semibold text-gray-700 border-r border-gray-200">${invItem.itemName}</td>
-                                <td class="p-2 text-center text-sm font-bold ${qty > 0 ? 'text-indigo-600' : 'text-gray-400'} border-r border-gray-200">${qty}</td>
-                                <td class="p-2 text-right text-sm font-bold text-gray-700">৳${total.toFixed(2)}</td>
-                            </tr>
-                        `;
+                        tableHeadHtml += `<th class="p-2 border-r border-gray-400 min-w-[60px] whitespace-nowrap bg-indigo-100 font-bold">${invItem.itemName}<br><span class="text-[10px] font-normal text-gray-600">কেজি</span></th>`;
                     });
 
-                    // ড্রয়ারের মূল ডিজাইন
+                    // ৪. প্রতিটি কেনাকাটার (সিরিয়াল) হিসাব বের করা
+                    for (const [txId, records] of Object.entries(transactions)) {
+                        let txNetTotal = 0;
+                        let txActualTotal = 0;
+                        const boughtItems = {};
+                        
+                        records.forEach(r => {
+                            boughtItems[r.item] = r.quantity;
+                            txNetTotal += r.calculatedPrice;
+                            txActualTotal += r.totalPaid;
+                            dayTotal += r.totalPaid;
+                        });
+
+                        // পণ্যের পরিমাণের রো
+                        tableRowsHtml += `<tr class="border-b border-gray-400 bg-white">
+                            <td class="p-2 text-center border-r border-gray-400 font-black text-gray-800 text-sm">${serialNo}</td>`;
+                        
+                        globalInventory.forEach(invItem => {
+                            const qty = boughtItems[invItem.itemName] || 0;
+                            const textClass = qty > 0 ? "font-bold text-indigo-700" : "text-gray-400";
+                            tableRowsHtml += `<td class="p-2 text-center border-r border-gray-400 text-sm ${textClass}">${qty}</td>`;
+                        });
+                        tableRowsHtml += `</tr>`;
+
+                        // নিট টাকা ও আসল টাকার রো (আপনার ছবির মতো নিচ দিয়ে থাকবে)
+                        const totalColumns = globalInventory.length + 1;
+                        tableRowsHtml += `
+                        <tr class="border-b-[3px] border-gray-800 bg-gray-50">
+                            <td colspan="${totalColumns}" class="p-2 text-center text-xs font-bold text-gray-800">
+                                <span class="inline-block border border-gray-500 rounded px-2 py-1 mr-2 bg-white">(নিট টাকা = ${txNetTotal.toFixed(0)})</span>
+                                <span class="inline-block border border-gray-500 rounded px-2 py-1 bg-white">(আসল টাকা = ${txActualTotal.toFixed(0)})</span>
+                            </td>
+                        </tr>`;
+                        serialNo++;
+                    }
+
+                    // ড্রয়ার ডিজাইন
                     drawersHtml += `
-                        <div class="border border-indigo-100 bg-white rounded-xl shadow-sm overflow-hidden">
+                        <div class="border border-indigo-100 bg-white rounded-xl shadow-sm overflow-hidden mb-3">
                             <button onclick="toggleDrawer(${drawerIndex})" class="w-full flex justify-between items-center p-3.5 bg-indigo-50/50 hover:bg-indigo-100 transition focus:outline-none">
                                 <div class="flex items-center gap-2">
                                     <i class="fa-regular fa-calendar-check text-indigo-600 text-lg"></i>
@@ -390,15 +410,10 @@
                             
                             <div id="drawer-content-${drawerIndex}" class="drawer-content bg-white">
                                 <div class="p-2">
-                                    <div class="border border-gray-200 rounded-lg overflow-hidden">
-                                        <table class="w-full text-left">
-                                            <thead class="bg-gray-100 border-b border-gray-200 text-xs text-gray-600 uppercase">
-                                                <tr>
-                                                    <th class="p-2 text-center w-10 border-r border-gray-200">ক্র.নং</th>
-                                                    <th class="p-2 border-r border-gray-200">আইটেম</th>
-                                                    <th class="p-2 text-center border-r border-gray-200">কেজি</th>
-                                                    <th class="p-2 text-right">মোট (৳)</th>
-                                                </tr>
+                                    <div class="table-container border-2 border-gray-800 rounded-lg custom-scroll">
+                                        <table class="w-full text-left border-collapse">
+                                            <thead class="sticky-header text-xs text-gray-800 uppercase text-center border-b-2 border-gray-800">
+                                                <tr>${tableHeadHtml}</tr>
                                             </thead>
                                             <tbody>
                                                 ${tableRowsHtml}
